@@ -19,6 +19,7 @@ mlruns/
 
 # Large datasets
 data/raw/*
+!data/raw/*.dvc
 data/processed/*
 
 # Trained models
