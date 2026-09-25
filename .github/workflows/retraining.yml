@@ -5,11 +5,9 @@ on:
 
 jobs:
   retrain:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -33,7 +31,7 @@ jobs:
           dvc remote modify --local dagshub_remote user gargi782005
           dvc remote modify --local dagshub_remote password "${{ secrets.DAGSHUB_TOKEN }}"
 
-            - name: Pull dataset from DagsHub
+      - name: Pull dataset from DagsHub
         run: |
           dvc pull data/raw/creditcard.csv.dvc
 
