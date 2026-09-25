@@ -1,0 +1,62 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/data/preprocess.py
+    deps:
+    - path: data/raw/creditcard.csv
+      hash: md5
+      md5: e90efcb83d69faf99fcab8b0255024de
+      size: 150828752
+    - path: src/data/preprocess.py
+      hash: md5
+      md5: eea731d002ed32f5153f98a0219885d2
+      size: 3078
+    outs:
+    - path: data/processed/test.csv
+      hash: md5
+      md5: 968523bf7214183543d42f802dc13bed
+      size: 31689700
+    - path: data/processed/train.csv
+      hash: md5
+      md5: bd1b41017aa5d601461d150d58b8bf6b
+      size: 126761712
+    - path: models/scaler.joblib
+      hash: md5
+      md5: b16d4f8bdb06b87cfc3363dce67f93b9
+      size: 903
+  train:
+    cmd: python src/models/save_best_model.py
+    deps:
+    - path: data/processed/train.csv
+      hash: md5
+      md5: bd1b41017aa5d601461d150d58b8bf6b
+      size: 126761712
+    - path: src/models/save_best_model.py
+      hash: md5
+      md5: 80eefe54344cf96e920900794bf2db6f
+      size: 1391
+    outs:
+    - path: models/fraud_model.joblib
+      hash: md5
+      md5: 2ac2fa52d98ed39eed28fda5b49334bf
+      size: 3969161
+  evaluate:
+    cmd: python src/models/evaluate.py
+    deps:
+    - path: data/processed/test.csv
+      hash: md5
+      md5: 968523bf7214183543d42f802dc13bed
+      size: 31689700
+    - path: models/fraud_model.joblib
+      hash: md5
+      md5: 2ac2fa52d98ed39eed28fda5b49334bf
+      size: 3969161
+    - path: src/models/evaluate.py
+      hash: md5
+      md5: 60ee96597c8e26aacfb1fcb799855b60
+      size: 2044
+    outs:
+    - path: reports/metrics.json
+      hash: md5
+      md5: 9063f89817a0eb126d6313c422c327f5
+      size: 123
