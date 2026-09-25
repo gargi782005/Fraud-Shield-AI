@@ -31,5 +31,7 @@ jobs:
           python -m compileall api src
 
       - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest -q
+          python -m pytest -q
