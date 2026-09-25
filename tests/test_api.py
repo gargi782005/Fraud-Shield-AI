@@ -1,6 +1,31 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
-from api.main import app
+
+class DummyModel:
+
+    def predict(self, data):
+        return [0]
+
+    def predict_proba(self, data):
+        return [[0.99, 0.01]]
+
+
+class DummyScaler:
+
+    def transform(self, data):
+        return data
+
+
+with patch(
+    "joblib.load",
+    side_effect=[
+        DummyModel(),
+        DummyScaler()
+    ]
+):
+    from api.main import app
 
 
 client = TestClient(app)
