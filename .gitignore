@@ -16,6 +16,7 @@ env/
 # MLflow
 mlruns/
 .mlflow/
+mlflow.db
 
 # Large datasets
 data/raw/*
