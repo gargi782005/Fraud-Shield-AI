@@ -1,11 +1,19 @@
 name: Fraud Shield AI - Automatic Retraining
 
 on:
+  # Run automatically every day
+  schedule:
+    - cron: "0 18 * * *"
+
+  # Also allow manual execution from GitHub Actions
   workflow_dispatch:
 
 jobs:
-  retrain:
+  drift-check:
     runs-on: ubuntu-latest
+
+    outputs:
+      drift_detected: ${{ steps.drift_check.outputs.drift_detected }}
 
     steps:
       - name: Checkout repository
@@ -20,9 +28,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install DVC
-        run: |
           pip install dvc
 
       - name: Configure DVC authentication
@@ -39,10 +44,68 @@ jobs:
         run: |
           ls -lh data/raw/creditcard.csv
 
-      - name: Run DVC pipeline
+      - name: Check data drift
+        id: drift_check
+        continue-on-error: true
+        run: |
+          python monitoring/drift_detection.py
+
+          if [ $? -eq 1 ]; then
+            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
+            echo "DATA DRIFT DETECTED"
+          else
+            echo "drift_detected=false" >> "$GITHUB_OUTPUT"
+            echo "NO SIGNIFICANT DATA DRIFT"
+          fi
+
+      - name: Show drift decision
+        run: |
+          echo "Drift detected: ${{ steps.drift_check.outputs.drift_detected }}"
+
+
+  retrain:
+    needs: drift-check
+    if: needs.drift-check.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install dvc
+
+      - name: Configure DVC authentication
+        run: |
+          dvc remote modify --local dagshub_remote auth basic
+          dvc remote modify --local dagshub_remote user gargi782005
+          dvc remote modify --local dagshub_remote password "${{ secrets.DAGSHUB_TOKEN }}"
+
+      - name: Pull dataset from DagsHub
+        run: |
+          dvc pull data/raw/creditcard.csv.dvc
+
+      - name: Run DVC retraining pipeline
         run: |
           dvc repro
 
       - name: Show model metrics
         run: |
           dvc metrics show
+
+      - name: Show retraining result
+        run: |
+          echo "=========================================="
+          echo "     FRAUD SHIELD AI - RETRAINING"
+          echo "=========================================="
+          echo "Data drift was detected."
+          echo "The model retraining pipeline was executed."
+          echo "=========================================="
