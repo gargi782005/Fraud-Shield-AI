@@ -1,14 +1,25 @@
 name: Fraud Shield AI - Automatic Retraining
 
 on:
-  # Run automatically every day at 18:00 UTC
+  # Automatic daily drift check
   schedule:
     - cron: "0 18 * * *"
 
-  # Allow manual testing from GitHub Actions
+  # Manual testing
   workflow_dispatch:
+    inputs:
+      simulate_drift:
+        description: "Simulate data drift for testing"
+        required: true
+        default: false
+        type: boolean
+
 
 jobs:
+
+  # ==================================================
+  # DRIFT DETECTION JOB
+  # ==================================================
 
   drift-check:
 
@@ -47,9 +58,9 @@ jobs:
         run: |
           ls -lh data/raw/creditcard.csv
 
-      # --------------------------------------------------
-      # Create a fresh monitoring batch
-      # --------------------------------------------------
+      # ==================================================
+      # CREATE CURRENT MONITORING DATA
+      # ==================================================
 
       - name: Create monitoring batch
         run: |
@@ -57,9 +68,8 @@ jobs:
           import pandas as pd
           from pathlib import Path
 
-          project_root = Path('.')
-          raw_file = project_root / 'data' / 'raw' / 'creditcard.csv'
-          log_file = project_root / 'monitoring' / 'prediction_logs.csv'
+          raw_file = Path('data/raw/creditcard.csv')
+          log_file = Path('monitoring/prediction_logs.csv')
 
           feature_columns = (
               ['Time']
@@ -79,17 +89,57 @@ jobs:
               index=False
           )
 
-          print(f'Created monitoring batch with {len(sample)} records.')
+          print('==========================================')
+          print('       MONITORING BATCH CREATED')
+          print('==========================================')
+          print(f'Records: {len(sample)}')
+          print('==========================================')
           "
 
       - name: Verify monitoring batch
         run: |
           ls -lh monitoring/prediction_logs.csv
-          python -c "import pandas as pd; df=pd.read_csv('monitoring/prediction_logs.csv'); print('Monitoring records:', len(df)); print(df[['Time','Amount']].head())"
 
-      # --------------------------------------------------
-      # Run drift detection
-      # --------------------------------------------------
+          python -c "
+          import pandas as pd
+
+          df = pd.read_csv('monitoring/prediction_logs.csv')
+
+          print('Monitoring records:', len(df))
+          print(df[['Time', 'Amount']].head())
+          "
+
+      # ==================================================
+      # OPTIONAL DRIFT SIMULATION
+      # ==================================================
+
+      - name: Simulate data drift
+        if: inputs.simulate_drift == true
+        run: |
+          python -c "
+          import pandas as pd
+
+          file = 'monitoring/prediction_logs.csv'
+
+          df = pd.read_csv(file)
+
+          # Artificially change Amount distribution
+          # This is ONLY for testing the retraining pipeline.
+          df['Amount'] = df['Amount'] * 10
+
+          df.to_csv(file, index=False)
+
+          print('==========================================')
+          print('      DATA DRIFT SIMULATION ENABLED')
+          print('==========================================')
+          print('Amount distribution was intentionally changed.')
+          print('This is only a pipeline test.')
+          print('==========================================')
+          "
+
+      # ==================================================
+      # DRIFT DETECTION
+      # ==================================================
 
       - name: Check data drift
         id: drift_check
@@ -101,19 +151,35 @@ jobs:
           EXIT_CODE=$?
 
           if [ $EXIT_CODE -eq 0 ]; then
+
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
-            echo "NO SIGNIFICANT DATA DRIFT"
+
+            echo "=========================================="
+            echo "       NO SIGNIFICANT DATA DRIFT"
+            echo "=========================================="
+
             exit 0
 
           elif [ $EXIT_CODE -eq 1 ]; then
+
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
-            echo "DATA DRIFT DETECTED"
+
+            echo "=========================================="
+            echo "          DATA DRIFT DETECTED"
+            echo "=========================================="
+
             exit 0
 
           else
-            echo "Drift detection failed."
+
+            echo "=========================================="
+            echo "       DRIFT DETECTION FAILED"
+            echo "=========================================="
+
             echo "Exit code: $EXIT_CODE"
+
             exit $EXIT_CODE
+
           fi
 
       - name: Show drift decision
@@ -125,9 +191,9 @@ jobs:
           echo "=========================================="
 
 
-  # ----------------------------------------------------
-  # Retraining job
-  # ----------------------------------------------------
+  # ==================================================
+  # AUTOMATIC RETRAINING JOB
+  # ==================================================
 
   retrain:
 
@@ -167,17 +233,33 @@ jobs:
         run: |
           ls -lh data/raw/creditcard.csv
 
-      # --------------------------------------------------
-      # Retrain complete DVC pipeline
-      # --------------------------------------------------
+      # ==================================================
+      # FORCE RETRAINING
+      # ==================================================
 
       - name: Run DVC retraining pipeline
         run: |
+          echo "=========================================="
+          echo "       STARTING MODEL RETRAINING"
+          echo "=========================================="
+
           dvc repro -f
+
+      # ==================================================
+      # MODEL METRICS
+      # ==================================================
 
       - name: Show model metrics
         run: |
+          echo "=========================================="
+          echo "          MODEL METRICS"
+          echo "=========================================="
+
           dvc metrics show
+
+      # ==================================================
+      # FINAL RESULT
+      # ==================================================
 
       - name: Show retraining result
         run: |
@@ -185,7 +267,8 @@ jobs:
           echo "     FRAUD SHIELD AI - RETRAINING"
           echo "=========================================="
           echo "Data drift was detected."
-          echo "The DVC pipeline was executed."
-          echo "The fraud detection model was retrained."
-          echo "Model evaluation completed."
+          echo "Automatic retraining was triggered."
+          echo "DVC pipeline was executed."
+          echo "Fraud detection model was retrained."
+          echo "Model evaluation was completed."
           echo "=========================================="
