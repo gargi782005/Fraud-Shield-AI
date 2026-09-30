@@ -256,6 +256,16 @@ jobs:
           echo "=========================================="
 
           dvc metrics show
+      
+      - name: Push retrained model to DVC remote
+        run: |
+          echo "=========================================="
+          echo "       PUSHING UPDATED MODEL"
+          echo "=========================================="
+
+          dvc push
+
+          echo "Updated model artifacts pushed to DVC remote."
 
       # ==================================================
       # FINAL RESULT
