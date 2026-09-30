@@ -1,21 +1,24 @@
 name: Fraud Shield AI - Automatic Retraining
 
 on:
-  # Run automatically every day
+  # Run automatically every day at 18:00 UTC
   schedule:
     - cron: "0 18 * * *"
 
-  # Also allow manual execution from GitHub Actions
+  # Allow manual testing from GitHub Actions
   workflow_dispatch:
 
 jobs:
+
   drift-check:
+
     runs-on: ubuntu-latest
 
     outputs:
       drift_detected: ${{ steps.drift_check.outputs.drift_detected }}
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -36,39 +39,106 @@ jobs:
           dvc remote modify --local dagshub_remote user gargi782005
           dvc remote modify --local dagshub_remote password "${{ secrets.DAGSHUB_TOKEN }}"
 
-      - name: Pull dataset from DagsHub
+      - name: Pull reference dataset
         run: |
           dvc pull data/raw/creditcard.csv.dvc
 
-      - name: Verify raw dataset
+      - name: Verify reference dataset
         run: |
           ls -lh data/raw/creditcard.csv
 
+      # --------------------------------------------------
+      # Create a fresh monitoring batch
+      # --------------------------------------------------
+
+      - name: Create monitoring batch
+        run: |
+          python -c "
+          import pandas as pd
+          from pathlib import Path
+
+          project_root = Path('.')
+          raw_file = project_root / 'data' / 'raw' / 'creditcard.csv'
+          log_file = project_root / 'monitoring' / 'prediction_logs.csv'
+
+          feature_columns = (
+              ['Time']
+              + [f'V{i}' for i in range(1, 29)]
+              + ['Amount']
+          )
+
+          df = pd.read_csv(raw_file)
+
+          sample = df.sample(
+              n=500,
+              random_state=42
+          )
+
+          sample[feature_columns].to_csv(
+              log_file,
+              index=False
+          )
+
+          print(f'Created monitoring batch with {len(sample)} records.')
+          "
+
+      - name: Verify monitoring batch
+        run: |
+          ls -lh monitoring/prediction_logs.csv
+          python -c "import pandas as pd; df=pd.read_csv('monitoring/prediction_logs.csv'); print('Monitoring records:', len(df)); print(df[['Time','Amount']].head())"
+
+      # --------------------------------------------------
+      # Run drift detection
+      # --------------------------------------------------
+
       - name: Check data drift
         id: drift_check
-        continue-on-error: true
         run: |
+          set +e
+
           python monitoring/drift_detection.py
 
-          if [ $? -eq 1 ]; then
-            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
-            echo "DATA DRIFT DETECTED"
-          else
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 0 ]; then
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
             echo "NO SIGNIFICANT DATA DRIFT"
+            exit 0
+
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
+            echo "DATA DRIFT DETECTED"
+            exit 0
+
+          else
+            echo "Drift detection failed."
+            echo "Exit code: $EXIT_CODE"
+            exit $EXIT_CODE
           fi
 
       - name: Show drift decision
         run: |
+          echo "=========================================="
+          echo "       FRAUD SHIELD AI - DRIFT CHECK"
+          echo "=========================================="
           echo "Drift detected: ${{ steps.drift_check.outputs.drift_detected }}"
+          echo "=========================================="
 
+
+  # ----------------------------------------------------
+  # Retraining job
+  # ----------------------------------------------------
 
   retrain:
+
     needs: drift-check
+
     if: needs.drift-check.outputs.drift_detected == 'true'
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -93,9 +163,17 @@ jobs:
         run: |
           dvc pull data/raw/creditcard.csv.dvc
 
+      - name: Verify dataset
+        run: |
+          ls -lh data/raw/creditcard.csv
+
+      # --------------------------------------------------
+      # Retrain complete DVC pipeline
+      # --------------------------------------------------
+
       - name: Run DVC retraining pipeline
         run: |
-          dvc repro
+          dvc repro -f
 
       - name: Show model metrics
         run: |
@@ -107,5 +185,7 @@ jobs:
           echo "     FRAUD SHIELD AI - RETRAINING"
           echo "=========================================="
           echo "Data drift was detected."
-          echo "The model retraining pipeline was executed."
+          echo "The DVC pipeline was executed."
+          echo "The fraud detection model was retrained."
+          echo "Model evaluation completed."
           echo "=========================================="
