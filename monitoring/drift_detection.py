@@ -78,16 +78,18 @@ def detect_drift():
     if not REFERENCE_DATA.exists():
 
         print("Reference dataset not found.")
+        print(f"Expected location: {REFERENCE_DATA}")
 
-        return False
+        return None
 
     # Check prediction logs
     if not PREDICTION_LOG.exists():
 
         print("Prediction log not found.")
-        print("Make predictions through the API first.")
+        print(f"Expected location: {PREDICTION_LOG}")
+        print("Prediction logs are required for drift detection.")
 
-        return False
+        return None
 
     # Load datasets
     reference_df = pd.read_csv(REFERENCE_DATA)
@@ -106,7 +108,7 @@ def detect_drift():
 
         print("\nMake more predictions through the API.")
 
-        return False
+        return None
 
     drift_results = []
 
@@ -182,12 +184,17 @@ if __name__ == "__main__":
 
     drift_detected = detect_drift()
 
-    if drift_detected:
+    if drift_detected is True:
 
         # Exit code 1 = drift detected
         raise SystemExit(1)
 
-    else:
+    elif drift_detected is False:
 
         # Exit code 0 = no drift
         raise SystemExit(0)
+
+    else:
+
+        # Exit code 2 = monitoring data/configuration problem
+        raise SystemExit(2)
